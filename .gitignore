@@ -1,0 +1,22 @@
+# Anchor / Solana
+.anchor
+target
+test-ledger
+
+# Dependencies
+node_modules
+.yarn
+
+# Env and secrets (never commit)
+.env
+.env.local
+.env.*.local
+
+# Keypairs and wallets (paths often in .env)
+*.keypair.json
+*-keypair.json
+id.json
+
+# IDE / OS
+.DS_Store
+**/*.rs.bk
