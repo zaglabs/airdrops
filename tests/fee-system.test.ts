@@ -127,7 +127,6 @@ describe("Fee system", () => {
           authority: instanceAuthority.publicKey,
           admin: feeRecipient1Random,
           feeRecipient: feeRecipient1Random,
-          withdrawAuthority: feeRecipient1Random,
           instanceConfig: instanceConfigPda,
           systemProgram: SystemProgram.programId,
         })
@@ -150,7 +149,6 @@ describe("Fee system", () => {
           authority: instanceAuthority.publicKey,
           admin: recipient,
           feeRecipient: recipient,
-          withdrawAuthority: recipient,
           instanceConfig: instanceConfigPda,
           systemProgram: SystemProgram.programId,
         })
@@ -172,7 +170,6 @@ describe("Fee system", () => {
             authority: otherKeypair.publicKey,
             admin: recipient,
             feeRecipient: recipient,
-            withdrawAuthority: recipient,
             instanceConfig: instanceConfigPda,
             systemProgram: SystemProgram.programId,
           })
@@ -194,7 +191,6 @@ describe("Fee system", () => {
           authority: instanceAuthority.publicKey,
           admin: recipient,
           feeRecipient: recipient,
-          withdrawAuthority: recipient,
           instanceConfig: instanceConfigPda,
           systemProgram: SystemProgram.programId,
         })
@@ -207,7 +203,6 @@ describe("Fee system", () => {
             authority: instanceAuthority.publicKey,
             admin: recipient,
             feeRecipient: recipient,
-            withdrawAuthority: recipient,
             instanceConfig: instanceConfigPda,
             systemProgram: SystemProgram.programId,
           })
@@ -236,7 +231,6 @@ describe("Fee system", () => {
           authority: instanceAuthority.publicKey,
           admin: updateTestRecipient.publicKey,
           feeRecipient: updateTestRecipient.publicKey,
-          withdrawAuthority: updateTestRecipient.publicKey,
           instanceConfig: updateTestInstancePda,
           systemProgram: SystemProgram.programId,
         })
@@ -312,7 +306,6 @@ describe("Fee system", () => {
             authority: instanceAuthority.publicKey,
             admin: recipient,
             feeRecipient: recipient,
-            withdrawAuthority: recipient,
             instanceConfig: instancePda,
             systemProgram: SystemProgram.programId,
           })

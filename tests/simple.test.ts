@@ -62,11 +62,14 @@ describe("Simple Airdrop Test", () => {
   it("Should create voucher message correctly", () => {
     const airdropPda = Keypair.generate().publicKey;
     const claimant = Keypair.generate().publicKey;
+    const amount = 10000;
     const nonce = 42;
     const expiry = Math.floor(Date.now() / 1000) + 3600;
 
     const airdropPdaBuf = airdropPda.toBuffer();
     const claimantBuf = claimant.toBuffer();
+    const amountBuf = Buffer.alloc(8);
+    amountBuf.writeBigUInt64LE(BigInt(amount), 0);
     const nonceBuf = Buffer.alloc(8);
     nonceBuf.writeBigUInt64LE(BigInt(nonce), 0);
     const expiryBuf = Buffer.alloc(8);
@@ -74,15 +77,17 @@ describe("Simple Airdrop Test", () => {
     const message = Buffer.concat([
       airdropPdaBuf,
       claimantBuf,
+      amountBuf,
       nonceBuf,
       expiryBuf,
     ]);
 
-    expect(message.length).to.equal(80); // 32 + 32 + 8 + 8
+    expect(message.length).to.equal(88); // 32 + 32 + 8 + 8 + 8
     expect(message.slice(0, 32)).to.deep.equal(airdropPdaBuf);
     expect(message.slice(32, 64)).to.deep.equal(claimantBuf);
-    expect(message.slice(64, 72)).to.deep.equal(nonceBuf);
-    expect(message.slice(72, 80)).to.deep.equal(expiryBuf);
+    expect(message.slice(64, 72)).to.deep.equal(amountBuf);
+    expect(message.slice(72, 80)).to.deep.equal(nonceBuf);
+    expect(message.slice(80, 88)).to.deep.equal(expiryBuf);
 
     console.log("✅ Voucher message created correctly");
   });

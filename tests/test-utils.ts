@@ -1,5 +1,6 @@
 import * as anchor from "@coral-xyz/anchor";
 import {
+  Connection,
   Keypair,
   PublicKey,
   SystemProgram,
@@ -12,6 +13,19 @@ export type DrainOptions = {
   /** If true, leave rent-exempt minimum in the account (use for fee accounts). */
   leaveRent?: boolean;
 };
+
+/** Confirm a transaction using blockhash (avoids deprecated confirmTransaction(sig, commitment)). */
+export async function confirmTransaction(
+  connection: Connection,
+  signature: string,
+): Promise<void> {
+  const { blockhash, lastValidBlockHeight } =
+    await connection.getLatestBlockhash("confirmed");
+  await connection.confirmTransaction(
+    { signature, blockhash, lastValidBlockHeight },
+    "confirmed",
+  );
+}
 
 /**
  * General test flow: provider funds accounts → tests run → remaining SOL in accounts
@@ -82,9 +96,9 @@ export class AirdropTestHelper {
         20 * anchor.web3.LAMPORTS_PER_SOL,
       );
 
-    await this.provider.connection.confirmTransaction(
+    await confirmTransaction(
+      this.provider.connection,
       initialTestWalletBalance,
-      "confirmed",
     );
 
     const initialBalance = await this.provider.connection.requestAirdrop(
@@ -92,10 +106,7 @@ export class AirdropTestHelper {
       20 * anchor.web3.LAMPORTS_PER_SOL,
     );
 
-    await this.provider.connection.confirmTransaction(
-      initialBalance,
-      "confirmed",
-    );
+    await confirmTransaction(this.provider.connection, initialBalance);
 
     const initialBalanceClaimant =
       await this.provider.connection.requestAirdrop(
@@ -103,9 +114,9 @@ export class AirdropTestHelper {
         20 * anchor.web3.LAMPORTS_PER_SOL,
       );
 
-    await this.provider.connection.confirmTransaction(
+    await confirmTransaction(
+      this.provider.connection,
       initialBalanceClaimant,
-      "confirmed",
     );
 
     // Create a test mint
@@ -134,10 +145,7 @@ export class AirdropTestHelper {
       1000000000 * 2, // Mint extra for testing
     );
 
-    await this.provider.connection.confirmTransaction(
-      tokenBalance,
-      "confirmed",
-    );
+    await confirmTransaction(this.provider.connection, tokenBalance);
 
     return {
       creator,
@@ -154,11 +162,18 @@ export class AirdropTestHelper {
     mint: PublicKey,
     creatorAta: PublicKey,
     totalAmount: number,
-    claimAmount: number,
-    endsAt?: number,
+    vouchersSizeBits: number,
+    nonce: PublicKey,
+    instanceConfigPda: PublicKey,
+    feeRecipient: PublicKey,
   ) {
     const [airdropPda] = PublicKey.findProgramAddressSync(
-      [Buffer.from("airdrop"), creator.publicKey.toBuffer(), mint.toBuffer()],
+      [
+        Buffer.from("airdrop"),
+        creator.publicKey.toBuffer(),
+        mint.toBuffer(),
+        nonce.toBuffer(),
+      ],
       this.program.programId,
     );
 
@@ -173,21 +188,21 @@ export class AirdropTestHelper {
     await this.program.methods
       .createAirdrop(
         new anchor.BN(totalAmount),
-        new anchor.BN(claimAmount),
-        endsAt ? new anchor.BN(endsAt) : null,
-        new anchor.BN(8192),
+        new anchor.BN(vouchersSizeBits),
       )
       .accounts({
         creator: creator.publicKey,
         backend: backend.publicKey,
-        mint: mint,
+        mint,
+        nonce,
+        instanceConfig: instanceConfigPda,
+        feeRecipient,
         airdrop: airdropPda,
-        pdaAta: pdaAta,
-        creatorAta: creatorAta,
+        pdaAta,
+        replayBitmap: await this.getReplayBitmapPda(airdropPda),
+        creatorAta,
         systemProgram: anchor.web3.SystemProgram.programId,
         tokenProgram: TOKEN_PROGRAM_ID,
-        associatedTokenProgram: anchor.utils.token.ASSOCIATED_PROGRAM_ID,
-        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
       })
       .signers([creator])
       .rpc();
@@ -276,8 +291,8 @@ export class AirdropTestHelper {
         airdrop: airdropPda,
         creator,
         mint,
-        pdaAta: pdaAta,
-        destAta: destAta,
+        pdaAta,
+        destAta,
         claimant: claimant.publicKey,
         replayBitmap: replayBitmapPda,
         instructionsSysvar: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY,
@@ -288,15 +303,18 @@ export class AirdropTestHelper {
     const tx = new Transaction().add(voucher.ed25519Instruction).add(claimIx);
 
     tx.feePayer = claimant.publicKey;
-    const { blockhash } = await this.provider.connection.getLatestBlockhash();
+    const { blockhash, lastValidBlockHeight } =
+      await this.provider.connection.getLatestBlockhash("confirmed");
     tx.recentBlockhash = blockhash;
     tx.sign(claimant);
 
     const txSignature = await this.provider.connection.sendTransaction(tx, [
       claimant,
     ]);
-    await this.provider.connection.confirmTransaction(txSignature);
-
+    await this.provider.connection.confirmTransaction(
+      { signature: txSignature, blockhash, lastValidBlockHeight },
+      "confirmed",
+    );
     return txSignature;
   }
 

@@ -1,4 +1,4 @@
-# Airdrop
+# Airdrops
 
 Solana program (Anchor) for token airdrops with backend-signed vouchers, replay protection, and per-instance fees.
 
@@ -41,8 +41,6 @@ Copy `.env.example` to `.env` and fill in values. Required for migrations and fe
 | `FEE_RECIPIENT_1` / `FEE_RECIPIENT_2` | Fee recipient pubkeys (base58) |
 | `AUTHORITY_SEED_1` / `AUTHORITY_SEED_2` | 64-char hex seeds for instance admin keypairs |
 | `FEE_AMOUNT_1` / `FEE_AMOUNT_2` | Fee in lamports per `create_airdrop` |
-
-Do not commit `.env`; it is gitignored.
 
 ## Deploy and migrate
 
@@ -106,11 +104,11 @@ Do not commit `.env`; it is gitignored.
 | `create_instance` | INSTANCE_AUTHORITY | Create instance PDA for a fee recipient and set admin + fee. |
 | `close_instance` | INSTANCE_AUTHORITY | Close instance PDA and reclaim rent. |
 | `update_instance` | Instance admin | Update `fee_lamports` for that instance. |
-| `create_airdrop` | Anyone | Create airdrop (tokens locked in PDA; optional fee from instance). |
-| `claim` | User | Claim with ed25519 voucher (amount, nonce, expiry) and replay check. |
-| `withdraw` | Creator | Withdraw unclaimed tokens from airdrop PDA. |
-| `set_paused` | Creator | Pause or unpause an airdrop. |
-| `update_backend` | Creator | Set new backend pubkey for voucher verification. |
+| `create_airdrop` | Anyone | Create airdrop (tokens locked in PDA; fee from instance required). |
+| `claim` | Anyone | Claim with ed25519 voucher (amount, nonce, expiry) and replay check. |
+| `withdraw` | Airdrop Creator | Withdraw unclaimed tokens from airdrop PDA. |
+| `set_paused` | Airdrop Creator | Pause or unpause an airdrop. |
+| `update_backend` | Airdrop Creator | Set new backend pubkey for voucher verification. |
 
 ## Security note
 

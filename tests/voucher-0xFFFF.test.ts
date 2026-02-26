@@ -86,7 +86,6 @@ describe("Claim with 0xFFFF index-independent vouchers", () => {
           authority: provider.wallet.publicKey,
           admin: provider.wallet.publicKey,
           feeRecipient: provider.wallet.publicKey,
-          withdrawAuthority: provider.wallet.publicKey,
           instanceConfig: instanceConfigPda,
           systemProgram: SystemProgram.programId,
         })
@@ -355,6 +354,8 @@ describe("Claim with 0xFFFF index-independent vouchers", () => {
       )
       .accounts({
         airdrop: airdropPda,
+        creator: creator.publicKey,
+        mint: mint.publicKey,
         pdaAta,
         destAta,
         claimant: claimant.publicKey,
@@ -397,6 +398,8 @@ describe("Claim with 0xFFFF index-independent vouchers", () => {
       )
       .accounts({
         airdrop: airdropPda,
+        creator: creator.publicKey,
+        mint: mint.publicKey,
         pdaAta,
         destAta,
         claimant: claimant.publicKey,
@@ -438,6 +441,8 @@ describe("Claim with 0xFFFF index-independent vouchers", () => {
       )
       .accounts({
         airdrop: airdropPda,
+        creator: creator.publicKey,
+        mint: mint.publicKey,
         pdaAta,
         destAta,
         claimant: claimant.publicKey,
@@ -481,6 +486,8 @@ describe("Claim with 0xFFFF index-independent vouchers", () => {
       )
       .accounts({
         airdrop: airdropPda,
+        creator: creator.publicKey,
+        mint: mint.publicKey,
         pdaAta,
         destAta,
         claimant: claimant.publicKey,
@@ -528,6 +535,8 @@ describe("Claim with 0xFFFF index-independent vouchers", () => {
       )
       .accounts({
         airdrop: airdropPda,
+        creator: creator.publicKey,
+        mint: mint.publicKey,
         pdaAta,
         destAta,
         claimant: claimant.publicKey,

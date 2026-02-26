@@ -20,61 +20,84 @@ import {
 import { Ed25519Program } from "@solana/web3.js";
 import * as nacl from "tweetnacl";
 import { expect } from "chai";
+import { confirmTransaction } from "./test-utils";
 import "./test-setup";
+
+function getInstancePda(programId: PublicKey, feeRecipient: PublicKey): PublicKey {
+  const [pda] = PublicKey.findProgramAddressSync(
+    [Buffer.from("instance"), feeRecipient.toBuffer()],
+    programId,
+  );
+  return pda;
+}
 
 describe("Claim with Amount Parameter", () => {
   const program = anchor.workspace.Airdrop;
   const provider = anchor.getProvider();
 
-  // Test accounts
   let creator: Keypair;
   let backend: Keypair;
   let claimant: Keypair;
   let mint: Keypair;
+  let nonce: Keypair;
   let creatorAta: PublicKey;
   let airdropPda: PublicKey;
   let pdaAta: PublicKey;
   let destAta: PublicKey;
   let replayBitmapPda: PublicKey;
-  
-  // Test constants
-  const TOTAL_AMOUNT = 1000000; // 1 token (with 6 decimals)
+  let instanceConfigPda: PublicKey;
+
+  const TOTAL_AMOUNT = 1000000;
   const MINT_DECIMALS = 6;
+  const VOUCHERS = 8192;
 
   before(async () => {
-    // Generate test keypairs
     creator = Keypair.generate();
     backend = Keypair.generate();
     claimant = Keypair.generate();
+    nonce = Keypair.generate();
 
-    // Airdrop SOL for transaction fees
     const initialTestWalletBalance = await provider.connection.requestAirdrop(
       provider.publicKey,
-      0.5 * anchor.web3.LAMPORTS_PER_SOL
+      2 * anchor.web3.LAMPORTS_PER_SOL,
     );
-    await provider.connection.confirmTransaction(
-      initialTestWalletBalance,
-      "confirmed"
-    );
+    await confirmTransaction(provider.connection, initialTestWalletBalance);
 
     const initialBalance = await provider.connection.requestAirdrop(
       creator.publicKey,
-      0.5 * anchor.web3.LAMPORTS_PER_SOL
+      0.5 * anchor.web3.LAMPORTS_PER_SOL,
     );
-    await provider.connection.confirmTransaction(initialBalance, "confirmed");
+    await confirmTransaction(provider.connection, initialBalance);
 
     const initialBalanceClaimant = await provider.connection.requestAirdrop(
       claimant.publicKey,
-      2 * anchor.web3.LAMPORTS_PER_SOL
+      2 * anchor.web3.LAMPORTS_PER_SOL,
     );
-    await provider.connection.confirmTransaction(
-      initialBalanceClaimant,
-      "confirmed"
+    await confirmTransaction(provider.connection, initialBalanceClaimant);
+
+    const initialBalanceNonce = await provider.connection.requestAirdrop(
+      nonce.publicKey,
+      0.1 * anchor.web3.LAMPORTS_PER_SOL,
     );
+    await confirmTransaction(provider.connection, initialBalanceNonce);
+
+    instanceConfigPda = getInstancePda(program.programId, provider.publicKey);
+    const instanceInfo = await provider.connection.getAccountInfo(instanceConfigPda);
+    if (!instanceInfo) {
+      await program.methods
+        .createInstance(new anchor.BN(0))
+        .accounts({
+          authority: provider.publicKey,
+          admin: provider.publicKey,
+          feeRecipient: provider.publicKey,
+          instanceConfig: instanceConfigPda,
+          systemProgram: SystemProgram.programId,
+        })
+        .rpc();
+    }
   });
 
   beforeEach(async () => {
-    // Create a new mint and airdrop for each test
     const lamports = await getMinimumBalanceForRentExemptMint(provider.connection);
     mint = Keypair.generate();
     creatorAta = getAssociatedTokenAddressSync(
@@ -86,8 +109,13 @@ describe("Claim with Amount Parameter", () => {
     );
 
     [airdropPda] = PublicKey.findProgramAddressSync(
-      [Buffer.from("airdrop"), creator.publicKey.toBuffer(), mint.publicKey.toBuffer()],
-      program.programId
+      [
+        Buffer.from("airdrop"),
+        creator.publicKey.toBuffer(),
+        mint.publicKey.toBuffer(),
+        nonce.publicKey.toBuffer(),
+      ],
+      program.programId,
     );
 
     pdaAta = getAssociatedTokenAddressSync(
@@ -100,77 +128,70 @@ describe("Claim with Amount Parameter", () => {
 
     [replayBitmapPda] = PublicKey.findProgramAddressSync(
       [Buffer.from("bitmap"), airdropPda.toBuffer()],
-      program.programId
+      program.programId,
     );
 
-    const endsAt = Math.floor(Date.now() / 1000) + 3600; // 1 hour from now
-    const vouchers = 8192;
-
     const createAirdropIx = await program.methods
-      .createAirdrop(
-        new anchor.BN(TOTAL_AMOUNT),
-        new anchor.BN(endsAt),
-        new anchor.BN(vouchers)
-      )
+      .createAirdrop(new anchor.BN(TOTAL_AMOUNT), new anchor.BN(VOUCHERS))
       .accounts({
         creator: creator.publicKey,
         backend: backend.publicKey,
         mint: mint.publicKey,
-        creatorAta: creatorAta,
+        nonce: nonce.publicKey,
+        instanceConfig: instanceConfigPda,
+        feeRecipient: provider.publicKey,
         airdrop: airdropPda,
-        pdaAta: pdaAta,
+        pdaAta,
         replayBitmap: replayBitmapPda,
+        creatorAta,
         systemProgram: SystemProgram.programId,
         tokenProgram: TOKEN_PROGRAM_ID,
-        associatedTokenProgram: anchor.utils.token.ASSOCIATED_PROGRAM_ID,
-        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
       })
       .instruction();
 
-    const tx = new Transaction()
-      .add(
-        SystemProgram.createAccount({
-          fromPubkey: creator.publicKey,
-          newAccountPubkey: mint.publicKey,
-          space: MINT_SIZE,
-          lamports,
-          programId: TOKEN_PROGRAM_ID,
-        }),
-        createInitializeMint2Instruction(mint.publicKey, MINT_DECIMALS, creator.publicKey, null, TOKEN_PROGRAM_ID),
-        createAssociatedTokenAccountInstruction(
-          creator.publicKey,
-          creatorAta,
-          creator.publicKey,
-          mint.publicKey,
-          TOKEN_PROGRAM_ID,
-          anchor.utils.token.ASSOCIATED_PROGRAM_ID,
-        ),
-        createMintToInstruction(mint.publicKey, creatorAta, creator.publicKey, TOTAL_AMOUNT * 100, [], TOKEN_PROGRAM_ID),
-        createAssociatedTokenAccountInstruction(
-          creator.publicKey,
-          pdaAta,
-          airdropPda,
-          mint.publicKey,
-          TOKEN_PROGRAM_ID,
-          anchor.utils.token.ASSOCIATED_PROGRAM_ID,
-        ),
-        createAirdropIx
-      );
+    const tx = new Transaction().add(
+      SystemProgram.createAccount({
+        fromPubkey: creator.publicKey,
+        newAccountPubkey: mint.publicKey,
+        space: MINT_SIZE,
+        lamports,
+        programId: TOKEN_PROGRAM_ID,
+      }),
+      createInitializeMint2Instruction(mint.publicKey, MINT_DECIMALS, creator.publicKey, null, TOKEN_PROGRAM_ID),
+      createAssociatedTokenAccountInstruction(
+        creator.publicKey,
+        creatorAta,
+        creator.publicKey,
+        mint.publicKey,
+        TOKEN_PROGRAM_ID,
+        anchor.utils.token.ASSOCIATED_PROGRAM_ID,
+      ),
+      createMintToInstruction(mint.publicKey, creatorAta, creator.publicKey, TOTAL_AMOUNT * 100, [], TOKEN_PROGRAM_ID),
+      createAssociatedTokenAccountInstruction(
+        creator.publicKey,
+        pdaAta,
+        airdropPda,
+        mint.publicKey,
+        TOKEN_PROGRAM_ID,
+        anchor.utils.token.ASSOCIATED_PROGRAM_ID,
+      ),
+      createAirdropIx,
+    );
 
     tx.feePayer = creator.publicKey;
     const { blockhash } = await provider.connection.getLatestBlockhash();
     tx.recentBlockhash = blockhash;
-    tx.sign(creator);
-    
+    tx.sign(creator, mint);
+
     const txSignature = await provider.connection.sendTransaction(tx, [creator, mint]);
-    await provider.connection.confirmTransaction(txSignature);
+    await confirmTransaction(provider.connection, txSignature);
 
     destAta = await getOrCreateAssociatedTokenAccount(
       provider.connection,
       claimant,
       mint.publicKey,
       claimant.publicKey,
-      false
+      false,
     ).then((ata) => ata.address);
   });
 
@@ -247,8 +268,10 @@ describe("Claim with Amount Parameter", () => {
       .claim(new anchor.BN(amount), new anchor.BN(nonce), new anchor.BN(expiry))
       .accounts({
         airdrop: airdropPda,
-        pdaAta: pdaAta,
-        destAta: destAta,
+        creator: creator.publicKey,
+        mint: mint.publicKey,
+        pdaAta,
+        destAta,
         claimant: claimant.publicKey,
         replayBitmap: replayBitmapPda,
         instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
@@ -263,7 +286,7 @@ describe("Claim with Amount Parameter", () => {
     tx.sign(claimant);
 
     const txSignature = await provider.connection.sendTransaction(tx, [claimant]);
-    await provider.connection.confirmTransaction(txSignature);
+    await confirmTransaction(provider.connection, txSignature);
     return txSignature;
   }
 
@@ -330,8 +353,10 @@ describe("Claim with Amount Parameter", () => {
       .claim(new anchor.BN(claimAmount), new anchor.BN(nonce), new anchor.BN(expiry))
       .accounts({
         airdrop: airdropPda,
-        pdaAta: pdaAta,
-        destAta: destAta,
+        creator: creator.publicKey,
+        mint: mint.publicKey,
+        pdaAta,
+        destAta,
         claimant: claimant.publicKey,
         replayBitmap: replayBitmapPda,
         instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
@@ -353,25 +378,25 @@ describe("Claim with Amount Parameter", () => {
     }
   });
 
-  it("Fails to claim when amount would exceed remaining funds after partial claims", async () => {
-    const firstClaim = 300000; // Claim 0.3 tokens first
-    const secondClaim = 800000; // Try to claim 0.8 tokens (would exceed remaining 0.7)
+  it("Caps claim to remaining amount when requesting more than available", async () => {
+    const firstClaim = 300000;
+    const secondClaimRequested = 800000; // More than remaining 700000
     const nonce1 = 30;
     const nonce2 = 31;
     const expiry = Math.floor(Date.now() / 1000) + 300;
 
-    // First claim succeeds
     await claimTokens(firstClaim, nonce1, expiry);
 
-    // Second claim should fail
-    const edIx = createVoucher(airdropPda, claimant.publicKey, secondClaim, nonce2, expiry);
-
+    // Second claim: voucher for 800000 but only 700000 left; program caps to 700000
+    const edIx = createVoucher(airdropPda, claimant.publicKey, secondClaimRequested, nonce2, expiry);
     const claimIx = await program.methods
-      .claim(new anchor.BN(secondClaim), new anchor.BN(nonce2), new anchor.BN(expiry))
+      .claim(new anchor.BN(secondClaimRequested), new anchor.BN(nonce2), new anchor.BN(expiry))
       .accounts({
         airdrop: airdropPda,
-        pdaAta: pdaAta,
-        destAta: destAta,
+        creator: creator.publicKey,
+        mint: mint.publicKey,
+        pdaAta,
+        destAta,
         claimant: claimant.publicKey,
         replayBitmap: replayBitmapPda,
         instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
@@ -384,17 +409,11 @@ describe("Claim with Amount Parameter", () => {
     const { blockhash } = await provider.connection.getLatestBlockhash();
     tx.recentBlockhash = blockhash;
     tx.sign(claimant);
+    const sig = await provider.connection.sendTransaction(tx, [claimant]);
+    await confirmTransaction(provider.connection, sig);
 
-    try {
-      await provider.connection.sendTransaction(tx, [claimant]);
-      expect.fail("Transaction should have failed");
-    } catch (error: any) {
-      expect(error.message).to.include("InsufficientFunds");
-    }
-
-    // Verify first claim still went through
     const destAtaAccount = await getAccount(provider.connection, destAta);
-    expect(Number(destAtaAccount.amount)).to.equal(firstClaim);
+    expect(Number(destAtaAccount.amount)).to.equal(TOTAL_AMOUNT);
   });
 
   it("Successfully claims the exact remaining amount", async () => {
@@ -430,8 +449,10 @@ describe("Claim with Amount Parameter", () => {
       .claim(new anchor.BN(claimAmount), new anchor.BN(nonce), new anchor.BN(expiry))
       .accounts({
         airdrop: airdropPda,
-        pdaAta: pdaAta,
-        destAta: destAta,
+        creator: creator.publicKey,
+        mint: mint.publicKey,
+        pdaAta,
+        destAta,
         claimant: claimant.publicKey,
         replayBitmap: replayBitmapPda,
         instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
@@ -448,9 +469,8 @@ describe("Claim with Amount Parameter", () => {
     try {
       await provider.connection.sendTransaction(tx, [claimant]);
       expect.fail("Transaction should have failed");
-    } catch (error: any) {
-      // Should fail with InvalidAmount error
-      expect(error.message).to.include("InvalidAmount");
+    } catch (error: unknown) {
+      expect((error as Error).message).to.include("InvalidVoucher");
     }
   });
 
@@ -485,8 +505,10 @@ describe("Claim with Amount Parameter", () => {
       .claim(new anchor.BN(claimAmount), new anchor.BN(nonce), new anchor.BN(expiry))
       .accounts({
         airdrop: airdropPda,
-        pdaAta: pdaAta,
-        destAta: destAta,
+        creator: creator.publicKey,
+        mint: mint.publicKey,
+        pdaAta,
+        destAta,
         claimant: claimant.publicKey,
         replayBitmap: replayBitmapPda,
         instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
