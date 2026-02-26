@@ -12,7 +12,7 @@ Solana program (Anchor) for token airdrops with backend-signed vouchers, replay 
 
 ## How it works
 
-1. **Instance** (optional): `INSTANCE_AUTHORITY` creates an instance per fee recipient; that instance’s admin sets the SOL fee for `create_airdrop`.
+1. **Instance**: `INSTANCE_AUTHORITY` creates an instance per fee recipient; that instance’s admin sets the SOL fee for `create_airdrop`.
 2. **Create airdrop**: Creator locks tokens into a PDA and specifies total amount and voucher bitmap size. If using an instance, they pay the instance’s fee to the fee recipient.
 3. **Claim**: User sends a transaction containing an ed25519 verify instruction (signature over amount, nonce, expiry, claimant) and a `claim(amount, nonce, expiry)` instruction. Program checks the precompile, expiry, and replay bitmap, then transfers tokens to the user.
 4. **Backend**: Off-chain service holds the backend keypair, issues vouchers (signs the message), and can be rotated via `update_backend`.
